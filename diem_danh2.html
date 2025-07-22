@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ứng Dụng Điểm Danh QR</title>
+    <style>
+        /* Định dạng CSS cơ bản để trang trông đẹp hơn trên điện thoại */
+        body { 
+            font-family: Arial, sans-serif; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: flex-start; 
+            min-height: 100vh; 
+            margin: 0; 
+            background-color: #f4f4f4; 
+            padding-top: 20px; 
+        }
+        #reader { 
+            width: 100%; 
+            max-width: 500px; 
+            margin-bottom: 20px; 
+        }
+        #result { 
+            margin-top: 20px; 
+            font-size: 1.2em; 
+            color: #333; 
+            text-align: center; 
+        }
+        #status { 
+            margin-top: 10px; 
+            font-size: 1.1em; 
+            color: #555; 
+            text-align: center; 
+        }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        h1 { color: #0056b3; margin-bottom: 20px; }
+        input[type="text"] { 
+            padding: 10px; 
+            margin-bottom: 10px; 
+            width: calc(100% - 22px); 
+            max-width: 480px; 
+            border: 1px solid #ccc; 
+            border-radius: 5px; 
+        }
+        button { 
+            padding: 10px 20px; 
+            background-color: #007bff; 
+            color: white; 
+            border: none; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            font-size: 1em; 
+        }
+        button:hover { background-color: #0056b3; }
+    </style>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+    <h1>Điểm Danh Cuộc Họp</h1>
+
+    <div style="width: 100%; max-width: 500px;">
+        <input type="text" id="meetingNameInput" placeholder="Nhập tên cuộc họp (nếu có)">
+        <div id="reader"></div>
+    </div>
+    
+    <p id="result">Đang chờ quét mã QR...</p>
+    <p id="status"></p>
+
+    <script>
+        // Dòng này CỰC KỲ QUAN TRỌNG:
+        // THAY THẾ 'YOUR_APPS_SCRIPT_WEB_APP_URL_HERE' BẰNG ĐƯỜNG LINK BẠN SAO CHÉP Ở BƯỚC 1.3
+        const APPS_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzZ9wq3eUEPFgnyHB0N6Lagz4ItDNL6c4fMDCGVTTU-pZJq6asQ-7X-VjQP9oCCVu8o4g/exec'; 
+
+        const html5QrCode = new Html5Qrcode("reader");
+        let isScanning = false; // Biến cờ để kiểm soát trạng thái quét
+
+        // Hàm này sẽ chạy mỗi khi một mã QR được quét thành công
+        async function onScanSuccess(decodedText, decodedResult) {
+            // Chỉ xử lý nếu đang trong trạng thái quét và chưa xử lý mã này
+            if (!isScanning) {
+                return; // Đảm bảo không xử lý nếu đã dừng quét
+            }
+
+            // Dừng quét ngay lập tức sau khi nhận diện thành công
+            isScanning = false; // Đặt cờ là false để ngăn quét trùng lặp
+            await html5QrCode.stop(); // Dừng camera
+
+            document.getElementById('result').innerHTML = `Mã QR đã quét: <b>${decodedText}</b>`;
+            document.getElementById('status').className = 'info';
+            document.getElementById('status').innerText = 'Đang gửi dữ liệu...';
+
+            const meetingName = document.getElementById('meetingNameInput').value;
+
+            try {
+                // Gửi dữ liệu (ID từ mã QR và tên cuộc họp) đến Google Apps Script API
+                await fetch(APPS_SCRIPT_WEB_APP_URL, {
+                    method: 'POST', 
+                    mode: 'no-cors', 
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded', 
+                    },
+                    body: `id=${decodedText}&meetingName=${encodeURIComponent(meetingName)}` 
+                });
+
+                document.getElementById('status').className = 'success';
+                document.getElementById('status').innerText = '✅ Điểm danh thành công! Vui lòng chuẩn bị mã tiếp theo.';
+                
+                // Sau 3 giây, tự động khởi động lại trình quét
+                setTimeout(() => {
+                    document.getElementById('result').innerText = 'Đang chờ quét mã QR...';
+                    document.getElementById('status').innerText = '';
+                    startScanner(); // Khởi động lại trình quét
+                }, 3000); // 3 giây
+                
+            } catch (error) {
+                console.error('Lỗi khi gửi dữ liệu:', error);
+                document.getElementById('status').className = 'error';
+                document.getElementById('status').innerText = '❌ Lỗi khi gửi dữ liệu: ' + error.message;
+                // Nếu có lỗi, vẫn khởi động lại trình quét để người dùng có thể thử lại
+                setTimeout(() => {
+                    document.getElementById('result').innerText = 'Đang chờ quét mã QR...';
+                    document.getElementById('status').innerText = '';
+                    startScanner(); 
+                }, 3000); 
+            }
+        }
+
+        // Hàm này chạy khi có lỗi trong quá trình quét (ví dụ: không tìm thấy mã QR)
+        function onScanError(errorMessage) {
+            // console.warn(`Code scan error = ${errorMessage}`); 
+        }
+
+        // Hàm để bắt đầu trình quét
+        function startScanner() {
+            if (isScanning) return; // Không làm gì nếu đã đang quét
+            isScanning = true; // Đặt cờ là true
+            
+            // Kiểm tra xem trình duyệt có hỗ trợ camera không
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                html5QrCode.start(
+                    { facingMode: "environment" }, // Ưu tiên sử dụng camera sau trên điện thoại (nếu có)
+                    {
+                        fps: 10,    // Tần suất quét khung hình (10 khung hình/giây)
+                        qrbox: { width: 250, height: 250 } // Kích thước khung quét QR trên màn hình
+                    },
+                    onScanSuccess, // Hàm gọi khi quét thành công
+                    onScanError    // Hàm gọi khi có lỗi quét
+                ).catch(err => {
+                    // Xử lý lỗi nếu không thể bắt đầu camera (ví dụ: người dùng từ chối quyền)
+                    document.getElementById('status').className = 'error';
+                    document.getElementById('status').innerText = 'Không thể truy cập camera. Vui lòng kiểm tra quyền hoặc trình duyệt.';
+                    console.error('Không thể bắt đầu quét:', err);
+                    isScanning = false; // Đặt lại cờ nếu có lỗi
+                });
+            } else {
+                document.getElementById('status').className = 'error';
+                document.getElementById('status').innerText = 'Trình duyệt của bạn không hỗ trợ truy cập camera.';
+                isScanning = false; // Đặt lại cờ nếu không hỗ trợ
+            }
+        }
+
+        // Bắt đầu quá trình quét khi toàn bộ trang web đã tải xong
+        window.onload = startScanner;
+    </script>
+</body>
+</html>
